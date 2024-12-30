@@ -1,0 +1,4 @@
+.env
+/node_modules
+.tool-versions
+dynamodb_export.json
