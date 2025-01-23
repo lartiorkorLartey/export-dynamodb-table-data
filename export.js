@@ -1,46 +1,42 @@
 const AWS = require('aws-sdk');
 require('aws-sdk/lib/maintenance_mode_message').suppress = true;
 const dotenv = require('dotenv')
+const fs= require("fs")
 
 dotenv.config()
 
-AWS.config.update({
-    region: process.env.AWS_REGION,
-    access_key: process.env.AWS_ACCESS_KEY_ID,
-    secret_access_key: process.env.AWS_SECRET_ACCESS_KEY
+const dynamoDB = new AWS.DynamoDB.DocumentClient({
+  region: process.env.AWS_REGION,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
 });
 
-async function queryDynamoDB(tableName) {
-  const dynamodb = new AWS.DynamoDB.DocumentClient({
-    endpoint: process.env.ENDPOINT
-  });
+const oldTable = process.env.OLD_DB_TABLE_NAME;
+const outputFile = "dynamodb_export.json";
 
-  let items = [];
-  let lastEvaluatedKey;
-
-  do {
-    const params = {
-      TableName: tableName,
-      ExclusiveStartKey: lastEvaluatedKey
-    };
-
-    const data = await dynamodb.scan(params).promise();
-    items = items.concat(data.Items);
-    lastEvaluatedKey = data.LastEvaluatedKey;
-  } while (lastEvaluatedKey);
-
-  return items;
+async function exportDynamoDBToJSON() {
+   let params = {
+          TableName: oldTable,
+      };
+  
+      let allData = [];
+      let count=1
+      try {
+          do {
+              const data = await dynamoDB.scan(params).promise();
+              allData = allData.concat(data.Items);
+              console.log(`Batch ${count}: ${data.Items.length} items`)
+              count++
+              params.ExclusiveStartKey = data.LastEvaluatedKey;
+          } while (params.ExclusiveStartKey);
+  
+          fs.writeFileSync(outputFile, JSON.stringify(allData, null, 2));
+          console.log("Data retrieved successfully. Saved to:", outputFile);
+      } catch (error) {
+          console.error("Error retrieving data:", error);
+      }
 }
 
-async function exportToJSON(items, outputFile) {
-  const fs = require('fs');
 
-  fs.writeFileSync(outputFile, JSON.stringify(items, null, 2));
-}
-
-const tableName = process.env.LOCAL_DB_TABLE_NAME;
-
-queryDynamoDB(tableName)
-  .then(items => exportToJSON(items, 'dynamodb_export.json'))
-  .catch(err => console.error('Error:', err));
+module.exports= {exportDynamoDBToJSON}
   
